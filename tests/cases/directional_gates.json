@@ -1,0 +1,12 @@
+{
+  "wires": [
+    {"name": "x", "k": 4},
+    {"name": "low", "k": 2, "value": 0},
+    {"name": "quotient", "k": 2, "value": 3}
+  ],
+  "constraints": [
+    {"type": "MOD", "a": "x", "output": "low"},
+    {"type": "DIV", "a": "x", "output": "quotient"}
+  ],
+  "expected": {"x": null, "low": 0, "quotient": 3}
+}

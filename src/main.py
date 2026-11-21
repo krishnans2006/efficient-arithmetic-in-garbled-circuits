@@ -1,91 +1,148 @@
 from enum import Enum
 
+
 class Constraint(Enum):
     JOIN = 1
     SWITCH = 2
-    ADD = 3
+    AFFINE = 3
+    MOD = 4
+    DIV = 5
+
+
+class Wire:
+    def __init__(self, name: str, k: int, value: int | None = None):
+        if k < 1:
+            raise ValueError("Wire width must be at least 1")
+
+        self.name = name
+        self.k = k
+        self.value = None
+
+        if value is not None:
+            self.set(value)
+
+    def set(self, value):
+        value %= 1 << self.k
+        if self.value is not None and self.value != value:
+            raise ValueError(f"Conflict on {self.name}: {self.value} != {value}")
+        changed = self.value is None
+        self.value = value
+        return changed
+
+    def __repr__(self):
+        return f"({self.name}, {self.k}, {self.value})"
+
+
 class Solver:
-    def __init__(self, mod):
-        self.m = mod
-        self.values = {}
+    def __init__(self):
         self.constraints = []
-        
-    def wire(self, name, value = None):
-        if name in self.values:
-            raise ValueError(f"Wire {name} already exists")
+        self.wires = set()
 
-        self.values[name] = value % self.m if value is not None else None
-        return name
-
-    def set(self, name, value):
-        value %= self.m
-        old = self.values[name]
-        if old is not None and old != value:
-            raise ValueError(f"Conflict on {name}: {old} != {value}")
-        self.values[name] = value
-
-    def add_constraint(self, constraint_type: Constraint, a=None, b=None, control = None, inputs=None, output = None):
+    def add_constraint(
+        self,
+        constraint_type: Constraint,
+        a=None,
+        b=None,
+        control=None,
+        coefficients=None,
+        constant=None,
+        output=None,
+    ):
         match constraint_type:
             case Constraint.JOIN:
                 if a is None or b is None:
                     raise ValueError("Join requires both a and b")
+                if a.k != b.k:
+                    raise ValueError("Join requires matching wire widths")
+
                 self.constraints.append((Constraint.JOIN, a, b))
+                self.wires.update((a, b))
             case Constraint.SWITCH:
                 if a is None or control is None or b is None:
-                    raise ValueError("Join requires both a, b, and control")
+                    raise ValueError("Switch requires both a, b, and control")
+
+                if a.k != b.k or control.k != 1:
+                    raise ValueError(
+                        "Switch requires matching wire widths and control to have 1-bit width"
+                    )
                 self.constraints.append((Constraint.SWITCH, a, control, b))
-            case Constraint.ADD:
-                if not inputs or output is None:
-                    raise ValueError("Add requires both inputs and an output")
-                self.constraints.append((Constraint.ADD, inputs, output))
+                self.wires.update((a, control, b))
+            case Constraint.AFFINE:
+                if coefficients is None or constant is None or output is None:
+                    raise ValueError(
+                        "Affine requires coefficients, a constant, and an output"
+                    )
+                if any(wire.k != output.k for wire in coefficients):
+                    raise ValueError("Affine requires matching wire widths")
+                self.constraints.append(
+                    (Constraint.AFFINE, dict(coefficients), constant, output)
+                )
+                self.wires.update(coefficients)
+                self.wires.add(output)
+            case Constraint.MOD | Constraint.DIV:
+                if a is None or output is None:
+                    raise ValueError("Mod/div requires input and output wires")
+                if a.k < output.k:
+                    raise ValueError("Mod/div cannot increase wire width")
+
+                self.constraints.append((constraint_type, a, output))
+                self.wires.update((a, output))
+            case _:
+                raise ValueError(f"Unknown constraint type: {constraint_type}")
 
     def solve(self):
         while True:
-            before = self.values.copy()
+            changed = False
             for constraint in self.constraints:
                 match constraint[0]:
                     case Constraint.JOIN:
-                        a,b = constraint[1:]
-                        if self.values[a] is not None:
-                            self.set(b, self.values[a])
-                        if self.values[b] is not None:
-                            self.set(a, self.values[b])
+                        a, b = constraint[1:]
+                        if a.value is not None:
+                            changed |= b.set(a.value)
+                        if b.value is not None:
+                            changed |= a.set(b.value)
                     case Constraint.SWITCH:
                         a, control, b = constraint[1:]
-                        c = self.values[control]
+                        c = control.value
                         if c == 0:
-                            if self.values[a] is not None:
-                                self.set(b, self.values[a])
-                            if self.values[b] is not None:
-                                self.set(a, self.values[b])
-                    case Constraint.ADD:
-                        inputs, output = constraint[1:]
-                        num_nones = [self.values[i] for i in inputs].count(None)
-                        if num_nones == 0:
-                            self.set(output, sum(self.values[i] for i in inputs))
-                        elif num_nones == 1 and self.values[output] is not None:
-                            index = [i for i in inputs if self.values[i] is None][0]
-                            self.set(index, self.values[output] - sum(self.values[i] for i in inputs if self.values[i] is not None))
-            if self.values == before:
+                            if a.value is not None:
+                                changed |= b.set(a.value)
+                            if b.value is not None:
+                                changed |= a.set(b.value)
+                    case Constraint.AFFINE:
+                        coefficients, constant, output = constraint[1:]
+
+                        modulus = 1 << output.k
+                        unknown = [wire for wire in coefficients if wire.value is None]
+
+                        known_sum = (
+                            constant
+                            + sum(
+                                coefficient * wire.value
+                                for wire, coefficient in coefficients.items()
+                                if wire.value is not None
+                            )
+                        ) % modulus
+                        if len(unknown) == 0:
+                            changed |= output.set(known_sum)
+                        elif len(unknown) == 1 and output.value is not None:
+                            unknown_wire = unknown[0]
+                            coefficient = coefficients[unknown_wire] % modulus
+
+                            remainder = (output.value - known_sum) % modulus
+                            inverse = pow(coefficient, -1, modulus)
+                            changed |= unknown_wire.set(remainder * inverse)
+                    case Constraint.MOD:
+                        a, output = constraint[1:]
+                        if a.value is not None:
+                            changed |= output.set(a.value)
+
+                    case Constraint.DIV:
+                        a, output = constraint[1:]
+                        if a.value is not None:
+                            shift = a.k - output.k
+                            changed |= output.set(a.value >> shift)
+            if not changed:
                 break
 
-        return self.values
-
-
-s = Solver(mod=4)
-
-h = [s.wire(f"h{i}", int(i == 2)) for i in range(4)]
-zero = s.wire("zero", 0)
-y = [s.wire(f"y{i}") for i in range(4)]
-
-scalar = s.wire("scalar")     # Unknown initially
-input_scalar = s.wire("input_scalar", 3)
-
-for i in range(4):
-    s.add_constraint(constraint_type=Constraint.SWITCH, a=zero, control=h[i], b=y[i])
-
-s.add_constraint(constraint_type=Constraint.ADD, inputs=y, output=scalar)
-s.add_constraint(constraint_type=Constraint.JOIN, a=scalar, b=input_scalar)
-
-print(s.solve())
-print("scaled vector:", [s.values[w] for w in y])
+        return {wire: wire.value is not None for wire in self.wires}

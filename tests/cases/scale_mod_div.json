@@ -1,0 +1,46 @@
+{
+  "wires": [
+    {"name": "h0", "k": 1, "value": 0},
+    {"name": "h1", "k": 1, "value": 0},
+    {"name": "h2", "k": 1, "value": 1},
+    {"name": "h3", "k": 1, "value": 0},
+    {"name": "zero", "k": 9, "value": 0},
+    {"name": "y0", "k": 9},
+    {"name": "y1", "k": 9},
+    {"name": "y2", "k": 9},
+    {"name": "y3", "k": 9},
+    {"name": "scalar", "k": 9},
+    {"name": "input_scalar", "k": 9, "value": 100},
+    {"name": "modded0", "k": 6},
+    {"name": "modded1", "k": 6},
+    {"name": "modded2", "k": 6},
+    {"name": "modded3", "k": 6},
+    {"name": "divided0", "k": 4},
+    {"name": "divided1", "k": 4},
+    {"name": "divided2", "k": 4},
+    {"name": "divided3", "k": 4}
+  ],
+  "constraints": [
+    {"type": "JOIN", "a": "scalar", "b": "input_scalar"},
+    {"type": "AFFINE", "coefficients": {"y0": 1, "y1": 1, "y2": 1, "y3": 1}, "constant": 0, "output": "scalar"},
+    {"type": "MOD", "a": "y0", "output": "modded0"},
+    {"type": "MOD", "a": "y1", "output": "modded1"},
+    {"type": "MOD", "a": "y2", "output": "modded2"},
+    {"type": "MOD", "a": "y3", "output": "modded3"},
+    {"type": "SWITCH", "a": "zero", "control": "h0", "b": "y0"},
+    {"type": "SWITCH", "a": "zero", "control": "h1", "b": "y1"},
+    {"type": "SWITCH", "a": "zero", "control": "h2", "b": "y2"},
+    {"type": "SWITCH", "a": "zero", "control": "h3", "b": "y3"},
+    {"type": "DIV", "a": "modded0", "output": "divided0"},
+    {"type": "DIV", "a": "modded1", "output": "divided1"},
+    {"type": "DIV", "a": "modded2", "output": "divided2"},
+    {"type": "DIV", "a": "modded3", "output": "divided3"}
+  ],
+  "expected": {
+    "h0": 0, "h1": 0, "h2": 1, "h3": 0, "zero": 0,
+    "scalar": 100, "input_scalar": 100,
+    "y0": 0, "y1": 0, "y2": 100, "y3": 0,
+    "modded0": 0, "modded1": 0, "modded2": 36, "modded3": 0,
+    "divided0": 0, "divided1": 0, "divided2": 9, "divided3": 0
+  }
+}

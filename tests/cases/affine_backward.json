@@ -1,0 +1,12 @@
+{
+  "wires": [
+    {"name": "x", "k": 3},
+    {"name": "z", "k": 3, "value": 5},
+    {"name": "copy", "k": 3}
+  ],
+  "constraints": [
+    {"type": "JOIN", "a": "copy", "b": "x"},
+    {"type": "AFFINE", "coefficients": {"x": 3}, "constant": 2, "output": "z"}
+  ],
+  "expected": {"x": 1, "z": 5, "copy": 1}
+}

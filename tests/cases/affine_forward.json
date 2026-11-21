@@ -1,0 +1,11 @@
+{
+  "wires": [
+    {"name": "x", "k": 3, "value": 3},
+    {"name": "y", "k": 3, "value": 2},
+    {"name": "z", "k": 3}
+  ],
+  "constraints": [
+    {"type": "AFFINE", "coefficients": {"x": 2, "y": 3}, "constant": 1, "output": "z"}
+  ],
+  "expected": {"x": 3, "y": 2, "z": 5}
+}
